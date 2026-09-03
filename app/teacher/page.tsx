@@ -1,0 +1,17 @@
+import Image from 'next/image';
+import Link from 'next/link';
+import { requireUser } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { logoutAction, updateLeadStatus } from '../actions';
+export const dynamic='force-dynamic';
+
+type Lead={id:string;full_name:string;phone:string;level:string;status:string;diagnostic_score:number|null;created_at:string};
+
+export default async function Teacher(){
+ const user=await requireUser('TEACHER');
+ const sql=db();
+ const leads=await sql`SELECT id, full_name, phone, level, status, diagnostic_score, created_at FROM leads ORDER BY created_at DESC LIMIT 50` as Lead[];
+ const counts=await sql`SELECT count(*)::int AS total, count(*) FILTER (WHERE created_at > now()-interval '7 days')::int AS week, count(*) FILTER (WHERE status='QUALIFIED')::int AS qualified, count(*) FILTER (WHERE status='ENROLLED')::int AS enrolled FROM leads` as {total:number,week:number,qualified:number,enrolled:number}[];
+ const content=await sql`SELECT (SELECT count(*) FROM courses WHERE is_published=true)::int AS courses,(SELECT count(*) FROM lessons)::int AS lessons,(SELECT count(*) FROM users WHERE role='STUDENT')::int AS students` as {courses:number,lessons:number,students:number}[];
+ return <div className="appShell"><aside className="sidebar"><div className="sideTop"><span className="logoMark">A</span><b>Prof Anis</b></div><div className="profileMini"><Image src="/prof-anis.jpg" alt="Prof Anis" width={50} height={50}/><div><b>{user.full_name}</b><small>Espace professeur</small></div></div><nav className="menu"><Link className="active" href="/teacher">Leads & CRM</Link><Link href="/courses">Cours</Link><Link href="/dashboard">Voir espace élève</Link><Link href="/">Site public</Link><form action={logoutAction}><button className="menuButton" type="submit">Déconnexion</button></form></nav></aside><main className="main"><div className="topbar"><div className="welcome"><h1>Dashboard Prof</h1><p>Leads, contenu et activité de la plateforme.</p></div><div className="avatar">A</div></div><div className="stats"><div className="stat"><small>Total leads</small><strong>{counts[0]?.total ?? 0}</strong><small>+{counts[0]?.week ?? 0} cette semaine</small></div><div className="stat"><small>Qualifiés</small><strong>{counts[0]?.qualified ?? 0}</strong></div><div className="stat"><small>Élèves</small><strong>{content[0]?.students ?? 0}</strong></div><div className="stat"><small>Contenu</small><strong>{content[0]?.courses ?? 0} / {content[0]?.lessons ?? 0}</strong><small>Cours / leçons</small></div></div><section className="card" style={{marginTop:18}}><h3>Derniers prospects</h3><div className="tableWrap"><table className="dataTable"><thead><tr><th>Nom</th><th>WhatsApp</th><th>Niveau</th><th>Score</th><th>Statut</th><th>Date</th></tr></thead><tbody>{leads.map(l=><tr key={l.id}><td>{l.full_name}</td><td>{l.phone}</td><td>{l.level}</td><td>{l.diagnostic_score ?? '—'}</td><td><form action={updateLeadStatus} style={{display:'flex',gap:8}}><input type="hidden" name="lead_id" value={l.id}/><select className="input" name="status" defaultValue={l.status} style={{padding:'7px 9px',minWidth:120}}><option>NEW</option><option>CONTACTED</option><option>QUALIFIED</option><option>ENROLLED</option><option>LOST</option></select><button className="btn ghost" type="submit" style={{padding:'7px 10px'}}>OK</button></form></td><td>{new Date(l.created_at).toLocaleDateString('fr-FR')}</td></tr>)}</tbody></table></div></section></main></div>
+}
