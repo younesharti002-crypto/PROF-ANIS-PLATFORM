@@ -1,0 +1,4 @@
+import { requireUser } from '@/lib/auth';
+export const dynamic='force-dynamic';
+import { AppShell, Topbar } from '../components';
+export default async function Regional(){await requireUser();const exams=[['Régional blanc #01','Terminé','15/20'],['Régional blanc #02','Terminé','16.5/20'],['Régional blanc #03','À faire','60 min'],['Régional Casablanca-Settat 2025','Archive','Sujet + corrigé']];return <AppShell active="Régional"><Topbar title="Examens Régionaux" subtitle="Entraîne-toi dans les conditions de l'examen."/><section className="card"><div className="courseList">{exams.map((e,i)=><div className="course" key={e[0]}><div className="courseNum">{String(i+1).padStart(2,'0')}</div><div className="courseText"><b>{e[0]}</b><small>{e[1]}</small></div><span className="pill">{e[2]}</span></div>)}</div></section></AppShell>}
