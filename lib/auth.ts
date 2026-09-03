@@ -1,49 +1,54 @@
 import { cookies } from 'next/headers';
-import { createHash, randomBytes } from 'crypto';
 import { redirect } from 'next/navigation';
-import { db } from './db';
+import {
+  createSessionForUser,
+  deleteSessionByToken,
+  getAuthenticatedSession,
+  getSessionCookieOptions,
+  SESSION_COOKIE_NAME,
+} from '@/src/lib/auth/session';
 
-export type SessionUser = { id:string; full_name:string; phone:string; role:'STUDENT'|'TEACHER'|'ADMIN'; level:string|null };
-const COOKIE = 'prof_anis_session';
+export type SessionUser = {
+  id: string;
+  full_name: string;
+  phone: string;
+  role: 'STUDENT' | 'PARENT' | 'TEACHER' | 'ADMIN';
+  level: string | null;
+};
 
-export function hashToken(token:string){ return createHash('sha256').update(token).digest('hex'); }
-
-export async function createSession(userId:string){
-  const token = randomBytes(32).toString('hex');
-  const tokenHash = hashToken(token);
-  const expires = new Date(Date.now() + 1000*60*60*24*14);
-  const sql = db();
-  await sql`INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (${userId}, ${tokenHash}, ${expires.toISOString()})`;
+export async function createSession(userId: string) {
+  const session = await createSessionForUser(userId);
   const jar = await cookies();
-  jar.set(COOKIE, token, { httpOnly:true, sameSite:'lax', secure:process.env.NODE_ENV==='production', path:'/', expires });
+  jar.set(SESSION_COOKIE_NAME, session.token, getSessionCookieOptions(session.expiresAt));
 }
 
-export async function getCurrentUser():Promise<SessionUser|null>{
+export async function getCurrentUser(): Promise<SessionUser | null> {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (!token || !process.env.DATABASE_URL) return null;
-  const sql = db();
-  const rows = await sql`
-    SELECT u.id, u.full_name, u.phone, u.role, u.level
-    FROM sessions s JOIN users u ON u.id=s.user_id
-    WHERE s.token_hash=${hashToken(token)} AND s.expires_at > now()
-    LIMIT 1` as SessionUser[];
-  return rows[0] ?? null;
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) return null;
+
+  const session = await getAuthenticatedSession(token);
+  if (!session) return null;
+
+  return {
+    id: session.user.id,
+    full_name: session.user.fullName,
+    phone: session.user.phone,
+    role: session.user.role,
+    level: session.user.level,
+  };
 }
 
-export async function requireUser(role?:SessionUser['role']){
+export async function requireUser(role?: SessionUser['role']) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (role && user.role !== role && user.role !== 'ADMIN') redirect('/dashboard');
   return user;
 }
 
-export async function endSession(){
+export async function endSession() {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (token && process.env.DATABASE_URL){
-    const sql = db();
-    await sql`DELETE FROM sessions WHERE token_hash=${hashToken(token)}`;
-  }
-  jar.delete(COOKIE);
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
+  if (token) await deleteSessionByToken(token);
+  jar.delete(SESSION_COOKIE_NAME);
 }
